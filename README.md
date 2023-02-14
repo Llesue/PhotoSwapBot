@@ -13,10 +13,10 @@
 - Find out you two with same gender
 ## What other features with it
 - The court system
-- Active user been invite to become judge
+- Active user been invite to become judge in auto
 - Judges decide photos are suitable or no
 - Alway choose photos that never visited if possible
-- Ban users if its photos been unapproved 5 times
+- Ban users if its photos been unapproved 3 times
 - Anonymous all the time
 ## Any others?
 - Yes. But since i finish this bot no one play with it
