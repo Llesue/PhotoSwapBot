@@ -5,9 +5,9 @@
 - Rate coming photo
 - Reply to the photo to add comment
 - The owner of photo will receive message
-- The owner reply to your message
-- You reply to him/her too
-- Keep talking
+- The photo owner reply to your message
+- You reply to him/her again
+- Keep chatting again and again
 - Fall in love 
 - Get married
 - Find out you two with same gender
@@ -15,7 +15,7 @@
 - The court system
 - Active user been invite to become judge in auto
 - Judges decide photos are suitable or no
-- Alway choose photos that never visited if possible
+- Alway swap photos that never visited if possible
 - Ban users if its photos been unapproved 3 times
 - Anonymous all the time
 ## Any others?
