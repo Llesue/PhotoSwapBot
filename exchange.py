@@ -7,7 +7,7 @@ import re
 
 dir = "/path/to/dir"
 bot_token = "<your_bot_token>"
-court_group_id = "<group_id>"
+court_group_id = "<your_group_id>"
 
 bot = telebot.TeleBot(bot_token, parse_mode=None)
 if not os.path.exists(dir):
@@ -91,7 +91,7 @@ def get_clickstatus(user_id, msg_id):
         clicked = record[0] if record else 0
     clicked = True if clicked > 0 else False
     return clicked
-
+    
 def auto_unban(user_id):
     is_banned, _ = getbanstatus(user_id)
     if is_banned:
@@ -138,40 +138,23 @@ def kick_lazyjudge(user_id):
         with sqlite3.connect(btndb_path) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT max(timestamp) FROM button_clicks \
-                WHERE user_id=? LIMIT 1',(user_id,))
-            record = cursor.fetchone()[0]
+                WHERE user_id=?',(user_id,))
+            record = cursor.fetchone()
+            record = record[0] if record else 0
             
+            anon = getanon(user_id)
             if record:
                 last_time = record
                 if last_time < now - 24 * 60 * 60:
                     lazy = True
-        member = bot.get_chat_member(court_group_id, user_id)
-        if not member.status in ["member"]:
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET is_judge=NULL WHERE user_id=?',(user_id,))
-                conn.commit()
-    else:
+            elif not record:
+                # judge didn't judge
+                mark_click(user_id, 999)
+    if lazy:
         member = bot.get_chat_member(court_group_id, user_id)
         if member.status in ["member"]:
-            bot.ban_chat_member(court_group_id, user_id, 60)
-            msg_text = f"Hi. Dear. You're not our judge anymore. Anyway, I had to remove \
-you from the chat. Sorry."
-            try:
-                bot.send_message(user_id, msg_text)
-            except:
-                sys_msg = "Sending message failed. Bot been blocked by the user."
-                monitor(user_id, sys_msg)
-    if lazy:
-        try:
-            member = bot.get_chat_member(court_group_id, user_id)
-            if member.status in ["member"]:
-                bot.ban_chat_member(court_group_id, user_id, 60)
-
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET is_judge=NULL WHERE user_id=?',(user_id,))
-                conn.commit()
+            ban_till = time.time() + 60
+            bot.ban_chat_member(court_group_id, user_id, ban_till)
             anon = getanon(user_id)
             msg_text = f"Dear *{anon}*. Because of your lazy judging. We decide \
 remove you from the court. Anyway thanks for your service. We'll invite you another \
@@ -183,23 +166,10 @@ time if you're still active in our community."
                 monitor(user_id, sys_msg)
             sys_msg = "Has been kicked out the court group because of lazy"
             monitor(user_id, sys_msg)
-        except:
-            pass
-
-def promote_judge(user_id):
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET is_judge=1 WHERE user_id=?',(user_id,))
-        conn.commit()
-        anon = getanon(user_id)
-        msg_text = f"Dear *{anon}* You have been promoted as Judge. Congratulations!"
-        try:
-            bot.send_message(user_id, msg_text)
-        except:
-            sys_msg = "Sending message failed. Bot been blocked by the user."
-            monitor(user_id, sys_msg)
-        sys_msg = "Has been promoted as Judge."
-        monitor(user_id, sys_msg)
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET is_judge=NULL WHERE user_id=?',(user_id,))
+            conn.commit()
 
 def monitor(user_id, sys_msg):
     with sqlite3.connect(db_path) as conn:
@@ -208,6 +178,7 @@ def monitor(user_id, sys_msg):
         fullname, username = cursor.fetchone()
     fullname = f"{fullname}(@{username}, {user_id})" if username else f"{fullname}({user_id})"
     print(f"\033[31m{fullname} \033[32m{sys_msg}\033[0m")
+    invite_judge(user_id)
 
 # get photo score by vote used in swapback
 def getscore(dislike=0, like=0, super=0):
@@ -247,6 +218,16 @@ def getanon(user_id):
             anon = f"👧Anon{nickname}" if sex == "female" else f"👦Anon{nickname}"
     return anon
 
+def getuploaded(message):
+    file_uid = message.photo[-1].file_unique_id
+    user_id = message.from_user.id
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM files WHERE file_uid=? AND user_id=?',(file_uid, user_id))
+        result = cursor.fetchone()
+    is_uploaded = True if result else False
+    return is_uploaded
+
 def update_comment_count(user_id):
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -268,7 +249,7 @@ def invite_judge(user_id):
         is_judge = is_judge or False
         if not is_judge:
             activity = comment + rate + upload
-            if activity in [20, 100, 500, 1000]:
+            if activity in [25, 100, 500, 1000]:
                 btn = telebot.types.InlineKeyboardButton
                 markup = telebot.types.InlineKeyboardMarkup()
                 judge_refuse = btn(f"No. I don't want to.", callback_data=f"judge_refuse")
@@ -330,6 +311,7 @@ def get_court_buttons(msg_id, unapprove_count=0, approve_count=0, mid=None, cid=
         text = f"{text}\n"
         text = re.sub(r"Published:(.*)", r"`Published:\1`", text)
         text = re.sub(r"By:(.*)", r"`By:\1`", text)
+        text = re.sub(r"Visited:(.*)", r"`Visited:\1`", text)
         text = re.sub(r"Rate this.*\n", r"", text)
         text = re.sub(r"Approve or.*\n", r"", text)
     else:
@@ -447,6 +429,7 @@ def send_court(msg_id):
 
 def store_photo(message):
     file_id = message.photo[-1].file_id
+    file_uid = message.photo[-1].file_unique_id
     first_name = message.from_user.first_name
     last_name = message.from_user.last_name
     fullname = f"{first_name} {last_name}" if last_name else first_name
@@ -469,9 +452,9 @@ def store_photo(message):
         else:
             # before user confirm dislike is 20 on default it'll update to 0 in send_court
             cursor.execute('INSERT INTO files \
-                (file_id, fullname, username, user_id, text, msg_id, timestamp, dislike) \
-                VALUES (?, ?, ?, ?, ?, ?, ?, 20)', \
-                (file_id, fullname, username, user_id, text, msg_id, timestamp))
+                (file_id, file_uid, fullname, username, user_id, text, msg_id, timestamp, dislike) \
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 20)', \
+                (file_id, file_uid, fullname, username, user_id, text, msg_id, timestamp))
             conn.commit()
 
         sys_msg = f"Has send a photo(msg_id={msg_id}) with caption: {text}"
@@ -508,7 +491,7 @@ def swapback(chat_id):
 
         num = 0
         while True:
-            start_time = now_time - 24 * 60 * 60
+            start_time = now_time - 7 * 24 * 60 * 60
             cursor.execute('SELECT file_id, text, dislike, like, \
                 super, timestamp, msg_id, user_id \
                 FROM files \
@@ -544,7 +527,7 @@ def swapback(chat_id):
             if file_id:
                 break
             else:
-                now_time = now_time - 24 * 60 * 60 + 1
+                now_time = now_time - 2 * 24 * 60 * 60 + 1
 
     if file_id:
         text = text if text else ""
@@ -563,10 +546,15 @@ def swapback(chat_id):
                     anon = getanon(reply_uid)
                     comments.append(f"`{anon}`: {comment}") if comment else None
                     comment_section = "\n".join(comments)
+            # update files view count
+            cursor.execute('SELECT view FROM files WHERE file_id=?',(file_id,))
+            view = cursor.fetchone()[0]
+            view = 1 if not view else view + 1
+            cursor.execute('UPDATE files SET view=? WHERE file_id=?',(view, file_id))
 
         date = time.strftime("%Y/%m/%d", time.gmtime(timestamp))
         anon = getanon(user_id)
-        by = f"`Published: {date}\nBy: {anon}`"
+        by = f"`Published: {date}\nVisited:{view}  By: {anon}`"
         caption = f"{text}\n{by}\n\n{comment_section}"
 
         bot.delete_message(chat_id, editlater)
@@ -581,11 +569,6 @@ def swapback(chat_id):
             upload = cursor.fetchone()[0]
             upload = 1 if not upload else upload + 1
             cursor.execute('UPDATE users SET upload=? WHERE user_id=?',(upload, chat_id))
-            # update files view count
-            cursor.execute('SELECT view FROM files WHERE file_id=?',(file_id,))
-            view = cursor.fetchone()[0]
-            view = 1 if not view else view + 1
-            cursor.execute('UPDATE files SET view=? WHERE file_id=?',(view, file_id))
             # insert a view log into comment section
             timestamp = time.time()
             cursor.execute('INSERT INTO comments (reply_id, timestamp, user_id) \
@@ -626,7 +609,8 @@ def confirm(call):
     param = f"[-](tg://msg?id={msg_id})"
     text = re.sub(r"(\w+\d+):", r"`\1`:", text) if text else None
     text = re.sub(r"Published:(.*)", r"`Published:\1`", text)
-    text = re.sub(r"By:(.*)", r"`By:\1`", text)
+    # text = re.sub(r"By:(.*)", r"`By:\1`", text)
+    text = re.sub(r"Visited:(.*)", r"`Visited:\1`", text)
     msg_text = f"{text}\n{param} `You're voted. reply to comment.`" if text else f"\n{param} `You're voted. reply to comment.`"
     bot.edit_message_caption(msg_text, chat_id, call.message.message_id, parse_mode="Markdown")
 
@@ -730,7 +714,11 @@ def ban_member(message):
             cursor.execute('SELECT count(nickname) FROM users WHERE nickname=?',(ban_num,))
             record = cursor.fetchone()[0]
             if record > 0:
-                cursor.execute('UPDATE users SET is_banned=is_banned+5 WHERE nickname=?',(ban_num,))
+                cursor.execute('SELECT is_banned FROM users WHERE nickname=?',(ban_num,))
+                ban_record = cursor.fetchone()[0]
+                ban_record = ban_record if ban_record else 0
+                ban = ban_record + 5
+                cursor.execute('UPDATE users SET is_banned=? WHERE nickname=?',(ban, ban_num,))
                 conn.commit()
                 # unapprove all his/her photos
                 cursor.execute('SELECT user_id FROM users WHERE nickname=?',(ban_num,))
@@ -796,15 +784,18 @@ def pull_message(message):
             score = cursor.fetchone()
             score = score[0] if score else 0
         anon = getanon(chat_id)
-        msg_text = f"Dear *{anon}*:\n\
-*Community info:*\n\n\
+        is_banned, bantime = getbanstatus(chat_id)
+        banstatus = f"\nYou're banned: {bantime} h" if is_banned else ""
+
+        msg_text = f"Dear *{anon}*:\n\n\
+*Community info:*\n\
 Total photos: {total_photos}\n\
 Total users: {total_users}\n\
 Banned users: {banned_users}\n\n\
 *Your info:*\n\
-Total upload:{total_upload}\n\
-Total comments:{total_comments}\n\
-Your score: {score}"
+Total upload: {total_upload}\n\
+Total comments: {total_comments}\n\
+Your score: {score}{banstatus}"
 
         bot.send_message(chat_id, msg_text, \
             parse_mode="MARKDOWN", disable_web_page_preview=True)
@@ -907,9 +898,8 @@ def start_command(call):
         bot.edit_message_text(msg_text, chat_id, msg_id, reply_markup=markup)
     else:
         bot.edit_message_text("All done.", chat_id, msg_id)
-
-    sys_msg = f"Finished the /start settings"
-    monitor(chat_id, sys_msg)
+        sys_msg = f"Finished the /start settings"
+        monitor(chat_id, sys_msg)
 
 # receive photos
 @bot.message_handler(content_types=["photo"])
@@ -932,9 +922,19 @@ def handle_photo(message):
         os.rename(path, new_path)
 
         if not is_banned:
-            send_court_id = store_photo(message)
-            yesno(message.chat.id, msg_id, send_court_id)
-            invite_judge(chat_id)
+            is_uploaded = getuploaded(message)
+            resolution = message.photo[-1].width * message.photo[-1].height
+            if not is_uploaded and resolution > 250000:
+                send_court_id = store_photo(message)
+                yesno(message.chat.id, msg_id, send_court_id)
+            elif is_uploaded:
+                bot.send_message(chat_id, "You already uploaded this file before. Please try else.")
+                sys_msg = f"Trying to re-upload same photo."
+                monitor(chat_id, sys_msg)
+            else:
+                bot.send_message(chat_id, "You trying to send a tiny picture? C'mon.")
+                sys_msg = f"Trying to upload tiny picture. resolution is only {resolution} pixels"
+                monitor(chat_id, sys_msg)
         else:
             bot.send_message(chat_id, f"Sorry. You're been banned for {bantime} hours.")
 
@@ -978,6 +978,7 @@ def handle_text(message):
             caption = re.sub(r"(\w+\d+):", r"`\1`:", caption)
             caption = re.sub(r"Published:(.*)", r"`Published:\1`", caption)
             caption = re.sub(r"By:(.*)", r"`By:\1`", caption)
+            caption = re.sub(r"Visited:(.*)", r"`Visited:\1`", caption)
 
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
@@ -994,10 +995,10 @@ def handle_text(message):
             try:
                 bot.send_message(send_id, f"`{anon}`: {text}", reply_to_message_id=reply_id, \
                     parse_mode="Markdown", disable_web_page_preview=True, allow_sending_without_reply=True)
-                sys_msg = f"Has left a comment on photo:{text}"
+                sys_msg = f"Has received a comment:{text}"
                 monitor(send_id, sys_msg)
             except:
-                sys_msg = "Sending message failed. Bot been blocked by the user."
+                sys_msg = "Receiving message failed. Becasue He/She blocked the bot."
                 monitor(send_id, sys_msg)
             update_comment_count(user_id)
             msg_text = f"{caption}`{anon}`: {text}\n\n[-](tg://msg?id={reply_id}) `Replied.`"
