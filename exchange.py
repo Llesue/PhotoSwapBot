@@ -8,6 +8,7 @@ import re
 dir = "/path/to/dir"
 bot_token = "<your_bot_token>"
 court_group_id = "<your_group_id>"
+admin_channel = "<your_log_channel_id>"
 
 telebot.apihelper.DELAY_PER_REQUEST = 0.5
 bot = telebot.TeleBot(bot_token, parse_mode=None)
