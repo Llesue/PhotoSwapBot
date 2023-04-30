@@ -517,7 +517,14 @@ def send_court(msg_id):
         time.sleep(1)
         bot.delete_message(court_group_id, sendmsg_id - 5)
     except:
-        print("Delete message failed.")
+        try:
+            bot.delete_message(court_group_id, sendmsg_id - 6)
+        except:
+            try:
+                bot.delete_message(court_group_id, sendmsg_id - 7)
+            except:
+                print("Delete message failed.")
+                # I know it's so dumb.
 
 def store_photo(message):
     file_id = message.photo[-1].file_id
