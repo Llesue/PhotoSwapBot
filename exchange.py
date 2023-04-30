@@ -510,21 +510,18 @@ def send_court(msg_id):
         cursor.execute('UPDATE files SET dislike=0 WHERE msg_id=?',(msg_id,))
         conn.commit()
 
-        time.sleep(1)
-        caption = f"{text}`Published: {date}`\n`By: {anon}`"
-        bot.send_photo(admin_channel, file_id, caption, parse_mode="Markdown", protect_content=False)
-    try:
-        time.sleep(1)
-        bot.delete_message(court_group_id, sendmsg_id - 5)
-    except:
-        try:
-            bot.delete_message(court_group_id, sendmsg_id - 6)
-        except:
+    time.sleep(1)
+    caption = f"{text}`Published: {date}`\n`By: {anon}`"
+    bot.send_photo(admin_channel, file_id, caption, parse_mode="Markdown", protect_content=False)
+
+    i = 5
+        while i < 11:
             try:
-                bot.delete_message(court_group_id, sendmsg_id - 7)
+                bot.delete_message(court_group_id, sendmsg_id - i)
+                time.sleep(1)
             except:
-                print("Delete message failed.")
-                # I know it's so dumb.
+                pass
+            i = i + 1
 
 def store_photo(message):
     file_id = message.photo[-1].file_id
